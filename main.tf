@@ -22,7 +22,7 @@ variable "aws_region" {
 variable "vpc_cidr" {
   description = "The CIDR block for the VPC"
   type        = string
-  default     = "10.0.0.0/16"
+  default     = "172.16.0.0/16"
 }
 
 
@@ -47,7 +47,7 @@ resource "null_resource" "check_az_count" {
 resource "aws_vpc" "main" {
   cidr_block = var.vpc_cidr
   tags = {
-    Name = "MainVPC-${random_string.identifier.result}"
+    Name = "VPC-${random_string.identifier.result}"
   }
 }
 
