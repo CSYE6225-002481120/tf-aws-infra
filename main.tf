@@ -15,6 +15,10 @@ variable "bucket_prefix" {
   type        = string
   default     = "webapp-bucket"
 }
+variable "API_key" {
+  type = string
+  default = "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"
+}
 
 variable "force_destroy" {
   description = "Boolean to determine if the S3 bucket should be forcibly destroyed, even if not empty."
@@ -273,6 +277,28 @@ resource "aws_iam_instance_profile" "S3andCloudwatch_instance_profile" {
   name = "S3andCloudwatchInstanceProfile"
   role = aws_iam_role.S3andCloudwatch.name
 }
+# Create SNS Publish Policy
+resource "aws_iam_policy" "sns_publish" {
+  name        = "sns_publish_policy"
+  description = "Policy to allow publishing messages to SNS"
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = "sns:Publish",
+        Resource = "arn:aws:sns:*:*:*" # Replace with specific SNS topic ARN(s) if you want to limit access
+      }
+    ]
+  })
+}
+
+# Attach the SNS Publish policy to the S3andCloudwatch role
+resource "aws_iam_role_policy_attachment" "attach_sns_publish_policy" {
+  role       = aws_iam_role.S3andCloudwatch.name
+  policy_arn = aws_iam_policy.sns_publish.arn
+}
 
 
 # Application Security Group
@@ -308,7 +334,7 @@ resource "aws_security_group" "app_sg" {
   }
 }
 
-# DB Security Group
+# Update DB Security Group to allow access from Lambda
 resource "aws_security_group" "db_sg" {
   vpc_id = aws_vpc.main.id
   name   = "DBSecurityGroup-${random_string.identifier.result}"
@@ -317,7 +343,10 @@ resource "aws_security_group" "db_sg" {
     from_port       = 3306
     to_port         = 3306
     protocol        = "tcp"
-    security_groups = [aws_security_group.app_sg.id]
+    security_groups = [
+      aws_security_group.app_sg.id,
+      aws_security_group.Lambda_sg.id  # Added Lambda SG here
+    ]
   }
 
   egress {
@@ -507,6 +536,7 @@ resource "aws_launch_template" "csye6225_asg" {
               echo "DEFAULT_PORT=3001" >> /home/csye6225/app/.env
               echo "DB_username=csye6225" >> /home/csye6225/app/.env
               echo "S3_BUCKET_NAME=${aws_s3_bucket.webapp_bucket.bucket}" >> /home/csye6225/app/.env
+              echo "SNS_TOPIC_ARN=${aws_sns_topic.my_topic.arn}" >> /home/csye6225/app/.env
 
               # Configure CloudWatch Agent
               sudo tee /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json > /dev/null << 'CONFIG'
@@ -653,6 +683,140 @@ resource "aws_route53_record" "webapp_alias" {
     zone_id                = aws_lb.app_lb.zone_id
     evaluate_target_health = true
   }
+}
+# Create SNS Topic
+resource "aws_sns_topic" "my_topic" {
+  name = "my_sns_topic"
+}
+
+# IAM Role for Lambda Function
+resource "aws_iam_role" "lambda_role" {
+  name = "lambda_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Action = "sts:AssumeRole",
+      Effect = "Allow",
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+# IAM Policy for Lambda Function
+resource "aws_iam_policy" "lambda_policy" {
+  name        = "lambda_policy"
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      # Permissions for CloudWatch Logs
+      {
+        Effect = "Allow",
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      # Permissions for VPC Access
+      {
+        Effect = "Allow",
+        Action = [
+          "ec2:CreateNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DeleteNetworkInterface"
+        ],
+        Resource = "*"
+      }
+      # Add any other permissions your Lambda function requires
+    ]
+  })
+}
+
+# Attach the policy to the role
+resource "aws_iam_role_policy_attachment" "lambda_policy_attachment" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = aws_iam_policy.lambda_policy.arn
+}
+
+# Lambda Security Group
+resource "aws_security_group" "Lambda_sg" {
+  name        = "lambda-security-group"
+  description = "Security group for Lambda function"
+  vpc_id      = aws_vpc.main.id
+
+  # No ingress rules needed for Lambda
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "LambdaSecurityGroup"
+  }
+}
+
+
+
+# Package Lambda code
+data "archive_file" "lambda_zip" {
+  type        = "zip"
+  source_dir  = "/Users/vardhankaranam/Desktop/lambda"  # Update with your code directory
+  output_path = "${path.module}/lambda_function.zip"
+}
+
+
+# Create Lambda Function
+resource "aws_lambda_function" "my_lambda" {
+  function_name = "my_lambda_function"
+  filename      = data.archive_file.lambda_zip.output_path
+  handler       = "index.handler"  # Update if your handler file is different
+  runtime       = "nodejs18.x"     # Update to your Node.js runtime version
+  role          = aws_iam_role.lambda_role.arn
+
+  # VPC Configuration
+  vpc_config {
+    subnet_ids         = [for subnet in aws_subnet.private : subnet.id]
+    security_group_ids = [aws_security_group.Lambda_sg.id]
+  }
+
+  # Environment Variables
+  environment {
+    variables = {
+      RDS_DB_NAME  = "csye6225"
+      RDS_HOST     = element(split(":", aws_db_instance.rds_instance.endpoint), 0) # Hostname only
+      RDS_PASSWORD = var.db_password
+      RDS_USERNAME = "csye6225"
+      SENDGRID_API_KEY = var.API_key
+    }
+  }
+
+  # Optional settings
+  timeout      = 30
+  memory_size  = 128
+}
+
+
+# Allow SNS to invoke Lambda
+resource "aws_lambda_permission" "allow_sns" {
+  statement_id  = "AllowExecutionFromSNS"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.my_lambda.function_name
+  principal     = "sns.amazonaws.com"
+  source_arn    = aws_sns_topic.my_topic.arn
+}
+
+# SNS Subscription to Lambda Function
+resource "aws_sns_topic_subscription" "lambda_subscription" {
+  topic_arn = aws_sns_topic.my_topic.arn
+  protocol  = "lambda"
+  endpoint  = aws_lambda_function.my_lambda.arn
 }
 
 # Outputs
