@@ -15,6 +15,14 @@ variable "bucket_prefix" {
   type        = string
   default     = "webapp-bucket"
 }
+variable "domain_email" {
+  type = string
+  default = "demo.vardhan.click"
+}
+variable path_lambda {
+  type = string
+  default = "/Users/vardhankaranam/Desktop/lambda"
+}
 variable "API_key" {
   type    = string
   default = "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"
@@ -447,6 +455,7 @@ resource "aws_security_group" "load_balancer_sg" {
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
     description = "Allow HTTP traffic from anywhere"
   }
 
@@ -767,7 +776,7 @@ resource "aws_security_group" "Lambda_sg" {
 # Package Lambda code
 data "archive_file" "lambda_zip" {
   type        = "zip"
-  source_dir  = "/Users/vardhankaranam/Desktop/lambda" # Update with your code directory
+  source_dir  = var.path_lambda # Update with your code directory
   output_path = "${path.module}/lambda_function.zip"
 }
 
@@ -794,6 +803,7 @@ resource "aws_lambda_function" "my_lambda" {
       RDS_PASSWORD     = var.db_password
       RDS_USERNAME     = "csye6225"
       SENDGRID_API_KEY = var.API_key
+      DOMAIN = var.domain_email
     }
   }
 
