@@ -16,11 +16,11 @@ variable "bucket_prefix" {
   default     = "webapp-bucket"
 }
 variable "domain_email" {
-  type = string
+  type    = string
   default = "demo.vardhan.click"
 }
-variable path_lambda {
-  type = string
+variable "path_lambda" {
+  type    = string
   default = "/Users/vardhankaranam/Desktop/lambda"
 }
 variable "API_key" {
@@ -451,12 +451,12 @@ resource "aws_security_group" "load_balancer_sg" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port        = 80
+    to_port          = 80
+    protocol         = "tcp"
+    cidr_blocks      = ["0.0.0.0/0"]
     ipv6_cidr_blocks = ["::/0"]
-    description = "Allow HTTP traffic from anywhere"
+    description      = "Allow HTTP traffic from anywhere"
   }
 
   egress {
@@ -698,6 +698,7 @@ resource "aws_sns_topic" "my_topic" {
   name = "my_sns_topic"
 }
 
+
 # IAM Role for Lambda Function
 resource "aws_iam_role" "lambda_role" {
   name = "lambda_role"
@@ -803,7 +804,7 @@ resource "aws_lambda_function" "my_lambda" {
       RDS_PASSWORD     = var.db_password
       RDS_USERNAME     = "csye6225"
       SENDGRID_API_KEY = var.API_key
-      DOMAIN = var.domain_email
+      DOMAIN           = var.domain_email
     }
   }
 
