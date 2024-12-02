@@ -279,6 +279,7 @@ resource "aws_iam_policy" "s3_upload" {
 resource "aws_kms_key" "ec2_key" {
   description             = "KMS Key for EC2 encryption"
   enable_key_rotation     = true
+  rotation_period_in_days = 90
   deletion_window_in_days = 10
 
   policy = <<EOF
@@ -441,6 +442,7 @@ resource "aws_security_group" "db_sg" {
 resource "aws_kms_key" "s3_key" {
   description             = "KMS Key for S3 encryption"
   enable_key_rotation     = true
+  rotation_period_in_days = 90
   deletion_window_in_days = 10
 
   # Enable variable interpolation in heredoc
@@ -532,6 +534,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "webapp_lifecycle" {
 resource "aws_kms_key" "rds_key" {
   description             = "KMS Key for RDS encryption"
   enable_key_rotation     = true
+  rotation_period_in_days = 90
   deletion_window_in_days = 10
 
   # Enable variable interpolation in heredoc
@@ -590,14 +593,15 @@ resource "aws_kms_alias" "rds_alias" {
 }
 resource "random_string" "rds_password" {
   length  = 16 # Adjust length as needed
-  special = true
+  special = false
   upper   = true
   lower   = true
   number  = true
 }
 resource "aws_kms_key" "rds_secret_key" {
-  description         = "KMS key for encrypting RDS secrets"
-  enable_key_rotation = true
+  description             = "KMS key for encrypting RDS secrets"
+  enable_key_rotation     = true
+  rotation_period_in_days = 90
 }
 
 resource "aws_secretsmanager_secret" "rds_secret" {
