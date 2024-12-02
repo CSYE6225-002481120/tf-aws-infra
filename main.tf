@@ -599,8 +599,8 @@ resource "random_string" "rds_password" {
   number  = true
 }
 resource "aws_kms_key" "rds_secret_key" {
-  description         = "KMS key for encrypting RDS secrets"
-  enable_key_rotation = true
+  description             = "KMS key for encrypting RDS secrets"
+  enable_key_rotation     = true
   rotation_period_in_days = 90
 }
 
